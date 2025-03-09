@@ -1,8 +1,11 @@
+import os
+import base64
+import json
+from google.oauth2.service_account import Credentials
+import gspread
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, List
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import LabelEncoder
@@ -21,12 +24,22 @@ app.add_middleware(
 
 # 🔹 ตั้งค่าเชื่อมต่อ Google Sheets
 GOOGLE_SHEET_NAME = "Data_project_like_course_branch"  # ✨ เปลี่ยนเป็นชื่อไฟล์ Google Sheet ของคุณ
-CREDENTIALS_FILE = "service_account.json"  # ✨ เปลี่ยนเป็นชื่อไฟล์ JSON ของ Service Account
 
 def connect_google_sheets():
     try:
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_FILE, scope)
+        # ดึงข้อมูลจาก Environment Variable
+        google_credentials_base64 = os.getenv('GOOGLE_CREDENTIALS')
+
+        # แปลง Base64 เป็น JSON
+        google_credentials_json = base64.b64decode(google_credentials_base64)
+
+        # โหลดเป็น dictionary จาก JSON
+        credentials_dict = json.loads(google_credentials_json)
+
+        # สร้าง Credentials จากข้อมูลที่ได้
+        creds = Credentials.from_service_account_info(credentials_dict)
+
+        # เชื่อมต่อกับ Google Sheets
         client = gspread.authorize(creds)
         sheet = client.open(GOOGLE_SHEET_NAME).sheet1
         return sheet

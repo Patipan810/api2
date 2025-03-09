@@ -1,19 +1,22 @@
 import os
 import base64
 import json
-from google.oauth2.service_account import Credentials
-import gspread
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+import requests
+from datetime import datetime
 from typing import Dict, List
+
 import pandas as pd
 import numpy as np
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from google.oauth2.service_account import Credentials
+import gspread
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics.pairwise import cosine_similarity
-from datetime import datetime
 
 app = FastAPI()
 
+# ✅ อนุญาต CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://itbit0267.cpkkuhost.com"],
@@ -22,48 +25,59 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 🔹 ตั้งค่าเชื่อมต่อ Google Sheets
-GOOGLE_SHEET_NAME = "Data_project_like_course_branch"  # ✨ เปลี่ยนเป็นชื่อไฟล์ Google Sheet ของคุณ
+# ✅ ตั้งค่า URL ไฟล์จาก GitHub (เปลี่ยนเป็นของจริง)
+GITHUB_FILES = {
+    "Respon.xlsx": "https://raw.githubusercontent.com/USERNAME/REPO/BRANCH/Respon.xlsx",
+    "Weight.xlsx": "https://raw.githubusercontent.com/USERNAME/REPO/BRANCH/Weight.xlsx",
+    "BranchID.Name.xlsx": "https://raw.githubusercontent.com/USERNAME/REPO/BRANCH/BranchID.Name.xlsx"
+}
+
+# ✅ ฟังก์ชันโหลดไฟล์จาก GitHub
+def download_file(url, filename):
+    response = requests.get(url)
+    if response.status_code == 200:
+        with open(filename, "wb") as f:
+            f.write(response.content)
+    else:
+        raise HTTPException(status_code=500, detail=f"Failed to download {filename} from GitHub")
+
+# ✅ โหลดข้อมูลจากไฟล์ .xlsx
+def load_data():
+    for filename, url in GITHUB_FILES.items():
+        if not os.path.exists(filename):
+            download_file(url, filename)
+    
+    df = pd.read_excel("Respon.xlsx")
+    Weight = pd.read_excel("Weight.xlsx")
+    branch_data = pd.read_excel("BranchID.Name.xlsx")
+
+    df = df.drop(['Timestamp', 'User'], axis=1)
+    label_encoder = LabelEncoder()
+    df['Course'] = label_encoder.fit_transform(df['Course'])
+    
+    for column in df.columns:
+        if df[column].dtype == 'object':
+            df[column] = LabelEncoder().fit_transform(df[column])
+
+    score_data = df.drop(['Course', 'Branch'], axis=1)
+    return df, Weight, branch_data, score_data, label_encoder
+
+# ✅ เชื่อมต่อ Google Sheets
+GOOGLE_SHEET_NAME = "Data_project_like_course_branch"
 
 def connect_google_sheets():
     try:
-        # ดึงข้อมูลจาก Environment Variable
         google_credentials_base64 = os.getenv('GOOGLE_CREDENTIALS')
-
-        # แปลง Base64 เป็น JSON
         google_credentials_json = base64.b64decode(google_credentials_base64)
-
-        # โหลดเป็น dictionary จาก JSON
         credentials_dict = json.loads(google_credentials_json)
-
-        # สร้าง Credentials จากข้อมูลที่ได้
         creds = Credentials.from_service_account_info(credentials_dict)
-
-        # เชื่อมต่อกับ Google Sheets
         client = gspread.authorize(creds)
         sheet = client.open(GOOGLE_SHEET_NAME).sheet1
         return sheet
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Google Sheets connection error: {str(e)}")
 
-# โหลดข้อมูล
-def load_data():
-    df = pd.read_excel('Respon.xlsx')
-    Weight = pd.read_excel('Weight.xlsx')
-    branch_data = pd.read_excel('BranchID.Name.xlsx')
-
-    df = df.drop(['Timestamp', 'User'], axis=1)
-
-    label_encoder = LabelEncoder()
-    df['Course'] = label_encoder.fit_transform(df['Course'])
-
-    for column in df.columns:
-        if df[column].dtype == 'object':
-            df[column] = LabelEncoder().fit_transform(df[column])
-
-    score_data = df.drop(['Course', 'Branch'], axis=1)
-
-    return df, Weight, branch_data, score_data, label_encoder
+# ✅ ประมวลผลข้อมูลจากแบบทดสอบ
 
 def process_personality_answers(personality_answers: Dict[str, str]) -> list:
     processed = {int(k.replace('answers[', '').replace(']', '')): int(v) for k, v in personality_answers.items()}
@@ -73,10 +87,14 @@ def process_subject_scores(scores: Dict[str, str]) -> list:
     processed = {int(k.replace('scores[', '').replace(']', '')): float(v) for k, v in scores.items()}
     return [processed[k] for k in sorted(processed.keys())]
 
+# ✅ แนะนำคณะตามบุคลิก
+
 def get_recommended_courses(personality_values: list, score_data, label_encoder, df) -> List[str]:
     course_similarity = cosine_similarity([personality_values], score_data)[0]
     top_courses_indices = np.argsort(course_similarity)[-5:][::-1]
     return list(label_encoder.inverse_transform(df.iloc[top_courses_indices]['Course']))
+
+# ✅ แนะนำสาขาตามคะแนน
 
 def get_recommended_branches(courses: List[str], subject_scores: list, branch_data, Weight) -> List[str]:
     recommended_branches = []
@@ -94,7 +112,7 @@ def get_recommended_branches(courses: List[str], subject_scores: list, branch_da
         'BranchID': relevant_weights['BranchID'].values,
         'Similarity': cosine_similarities
     })
-
+    
     top_branches = results[results['Similarity'] > 0].nlargest(10, 'Similarity')
 
     for _, row in top_branches.iterrows():
@@ -106,49 +124,26 @@ def get_recommended_branches(courses: List[str], subject_scores: list, branch_da
 
     return recommended_branches
 
+# ✅ API แนะนำ
 @app.post("/api/recommend")
 async def recommend(payload: Dict[str, Dict[str, str]]):
     try:
         df, Weight, branch_data, score_data, label_encoder = load_data()
-
         personality_values = process_personality_answers(payload['personality_answers'])
         subject_values = process_subject_scores(payload['scores'])
-
         recommended_courses = get_recommended_courses(personality_values, score_data, label_encoder, df)
         recommended_branches = get_recommended_branches(recommended_courses, subject_values, branch_data, Weight)
-
-        return {
-            "ผลการแนะนำ": {
-                "คณะที่แนะนำตามบุคลิก": [{"name": course} for course in recommended_courses],
-                "สาขาที่แนะนำตามน้ำหนักคะแนนและบุคลิก": recommended_branches or ["ไม่มีสาขาที่ตรงกับเกณฑ์ของคุณ"]
-            }
-        }
-
+        return {"ผลการแนะนำ": {"คณะที่แนะนำตามบุคลิก": [{"name": course} for course in recommended_courses], "สาขาที่แนะนำตามน้ำหนักคะแนนและบุคลิก": recommended_branches or ["ไม่มีสาขาที่ตรงกับเกณฑ์ของคุณ"]}}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# ✅ API บันทึกผล
 @app.post("/api/save-liked-result")
 async def save_liked_result(data: Dict):
     try:
-        print("🔹 Data received:", data)  # ✅ Debug เช็คข้อมูลที่รับมา
         sheet = connect_google_sheets()
-
-        new_data = [
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            *[v for v in data['personalityAnswers'].values()],
-            *[v for v in data['scores'].values()],
-            *[c['name'] for c in data['recommendations']['คณะที่แนะนำตามบุคลิก']],
-            *data['recommendations']['สาขาที่แนะนำตามน้ำหนักคะแนนและบุคลิก']
-        ]
-
-        print("✅ Data to be saved:", new_data)  # ✅ Debug เช็คข้อมูลก่อนบันทึก
+        new_data = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"), *[v for v in data['personalityAnswers'].values()], *[v for v in data['scores'].values()], *[c['name'] for c in data['recommendations']['คณะที่แนะนำตามบุคลิก']], *data['recommendations']['สาขาที่แนะนำตามน้ำหนักคะแนนและบุคลิก']]
         sheet.append_row(new_data)
-
-        return {"success": True, "message": "Data saved to Google Sheets successfully"}
+        return {"success": True, "message": "Data saved successfully"}
     except Exception as e:
-        print("🔥 ERROR:", str(e))  # ✅ Debug เช็ค Error ที่เกิดขึ้น
         raise HTTPException(status_code=500, detail=str(e))
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("app:app", host="127.0.0.1", port=8080, reload=True)

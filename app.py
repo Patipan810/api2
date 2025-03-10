@@ -128,7 +128,7 @@ def get_recommended_branches(courses: List[str], subject_scores: List[float], br
     
     return recommended_branches
 
-# ✅ API แนะนำ
+# ระบบแนะนำ
 @app.post("/api/recommend")
 async def recommend(payload: Dict[str, Dict[str, str]]):
     try:
@@ -147,4 +147,27 @@ async def recommend(payload: Dict[str, Dict[str, str]]):
         }
     except Exception as e:
         logging.error(f"Error in /api/recommend: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+        
+# ระบบถูกใจ        
+@app.post("/api/save-liked-result")
+async def save_liked_result(data: Dict):
+    try:
+        print("🔹 Data received:", data)  # ✅ Debug เช็คข้อมูลที่รับมา
+        sheet = connect_google_sheets()
+
+        new_data = [
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            *[v for v in data['personalityAnswers'].values()],
+            *[v for v in data['scores'].values()],
+            *[c['name'] for c in data['recommendations']['คณะที่แนะนำตามบุคลิก']],
+            *data['recommendations']['สาขาที่แนะนำตามน้ำหนักคะแนนและบุคลิก']
+        ]
+
+        print("✅ Data to be saved:", new_data)  # ✅ Debug เช็คข้อมูลก่อนบันทึก
+        sheet.append_row(new_data)
+
+        return {"success": True, "message": "Data saved to Google Sheets successfully"}
+    except Exception as e:
+        print("🔥 ERROR:", str(e))  # ✅ Debug เช็ค Error ที่เกิดขึ้น
         raise HTTPException(status_code=500, detail=str(e))

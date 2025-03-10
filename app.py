@@ -97,11 +97,6 @@ def connect_google_sheets():
         raise HTTPException(status_code=500, detail=f"Google Sheets connection error: {str(e)}")
         
 # ✅ ฟังก์ชันคำนวณการแนะนำสาขา
-def get_recommended_courses(personality_values: list, score_data, label_encoder, df) -> List[str]:
-    course_similarity = cosine_similarity([personality_values], score_data)[0]
-    top_courses_indices = np.argsort(course_similarity)[-5:][::-1]
-    return list(label_encoder.inverse_transform(df.iloc[top_courses_indices]['Course']))
-
 def get_recommended_branches(courses: List[str], subject_scores: list, branch_data, Weight) -> List[str]:
     recommended_branches = []
     all_branch_ids = branch_data[branch_data['Course'].isin(courses)]['BranchID'].values
@@ -129,7 +124,6 @@ def get_recommended_branches(courses: List[str], subject_scores: list, branch_da
             recommended_branches.append(f"{branch_name} (ค่า Similarity: {similarity:.2f}%)")
 
     return recommended_branches
-
 # ✅ API แนะนำ
 @app.post("/api/recommend")
 async def recommend(payload: Dict[str, Dict[str, str]]):

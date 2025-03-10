@@ -101,25 +101,28 @@ def connect_google_sheets():
 @app.post("/api/recommend")
 async def recommend(payload: Dict[str, Dict[str, str]]):
     try:
-        logging.debug(f"📥 Received Payload: {payload}")
-
         df, Weight, branch_data, score_data, label_encoder = load_data()
-        personality_values = [int(payload['personality_answers'][key]) for key in sorted(payload['personality_answers'])]
-        subject_values = [float(payload['scores'][key]) for key in sorted(payload['scores'])]
-        
-        recommended_courses = list(label_encoder.inverse_transform(df.iloc[np.argsort(cosine_similarity([personality_values], score_data)[0])[-5:][::-1]]['Course']))
-        logging.debug(f"🎓 Recommended Courses: {recommended_courses}")
-        
-        recommended_branches = []  # (เพิ่มตรรกะการคำนวณของ get_recommended_branches ที่นี่)
+
+        # ✅ ดึงค่าคำตอบบุคลิก & คะแนนรายวิชา
+        personality_values = process_personality_answers(payload['personality_answers'])
+        subject_values = process_subject_scores(payload['scores'])
+
+        # ✅ แนะนำคณะ
+        recommended_courses = get_recommended_courses(personality_values, score_data, label_encoder, df)
+
+        # ✅ แนะนำสาขา (เพิ่ม logic ตรงนี้)
+        recommended_branches = get_recommended_branches(recommended_courses, subject_values, branch_data, Weight)
+
         return {
             "ผลการแนะนำ": {
                 "คณะที่แนะนำตามบุคลิก": [{"name": course} for course in recommended_courses],
                 "สาขาที่แนะนำตามน้ำหนักคะแนนและบุคลิก": recommended_branches or ["ไม่มีสาขาที่ตรงกับเกณฑ์ของคุณ"]
             }
         }
+
     except Exception as e:
-        logging.error(f"❌ Error in /api/recommend: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
 
 # ✅ API บันทึกผล
 @app.post("/api/save-liked-result")

@@ -59,7 +59,7 @@ def load_data():
                 df[column] = LabelEncoder().fit_transform(df[column])
 
         score_data = df.drop(['Course', 'Branch'], axis=1)
-        return df, Weight, branch_data, score_data, label_encoder
+        return df, weight, branch_data, score_data, label_encoder
     except Exception as e:
         logging.error(f"Error reading Excel files: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error reading Excel files: {str(e)}")
@@ -82,7 +82,7 @@ def get_recommended_courses(personality_values: list, score_data, label_encoder,
 def get_recommended_branches(courses: List[str], subject_scores: list, branch_data, Weight) -> List[str]:
     recommended_branches = []
     all_branch_ids = branch_data[branch_data['Course'].isin(courses)]['BranchID'].values
-    relevant_weights = Weight[Weight['BranchID'].isin(all_branch_ids)]
+    relevant_weights = weight[weight['BranchID'].isin(all_branch_ids)]
 
     if relevant_weights.empty:
         return []

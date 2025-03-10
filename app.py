@@ -1,9 +1,17 @@
 import os
+import base64
+import json
 import logging
+import requests
+from datetime import datetime
+from typing import Dict, List
+
 import pandas as pd
 import numpy as np
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from google.oauth2.service_account import Credentials
+import gspread
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -28,6 +36,7 @@ GITHUB_FILES = {
 }
 
 # ✅ ฟังก์ชันโหลดข้อมูลจากไฟล์
+
 def load_data():
     try:
         for filename, url in GITHUB_FILES.items():
@@ -62,6 +71,7 @@ def load_data():
         raise HTTPException(status_code=500, detail=f"Error reading Excel files: {str(e)}")
 
 # ✅ ฟังก์ชันประมวลผลข้อมูล
+
 def process_personality_answers(personality_answers: Dict[str, str]) -> List[int]:
     return [int(personality_answers[key]) for key in sorted(personality_answers)]
 
@@ -69,12 +79,14 @@ def process_subject_scores(scores: Dict[str, str]) -> List[float]:
     return [float(scores[key]) for key in sorted(scores)]
 
 # ✅ ฟังก์ชันแนะนำคณะ
+
 def get_recommended_courses(personality_values: List[int], df, score_data, label_encoder) -> List[str]:
     similarity_scores = cosine_similarity([personality_values], score_data)[0]
     top_courses = np.argsort(similarity_scores)[-5:][::-1]
     return list(label_encoder.inverse_transform(df.iloc[top_courses]['Course']))
 
 # ✅ ฟังก์ชันแนะนำสาขา
+
 def get_recommended_branches(courses: List[str], subject_scores: List[float], branch_data, weight) -> List[str]:
     relevant_branches = branch_data[branch_data['Course'].isin(courses)]
     if relevant_branches.empty:
@@ -109,17 +121,11 @@ def get_recommended_branches(courses: List[str], subject_scores: List[float], br
 @app.post("/api/recommend")
 async def recommend(payload: Dict[str, Dict[str, str]]):
     try:
-        # โหลดข้อมูล
         df, weight, branch_data, score_data, label_encoder = load_data()
-
-        # ประมวลผลคำตอบของผู้ใช้
         personality_values = process_personality_answers(payload['personality_answers'])
         subject_values = process_subject_scores(payload['scores'])
         
-        # แนะนำคณะ
         recommended_courses = get_recommended_courses(personality_values, df, score_data, label_encoder)
-
-        # แนะนำสาขา
         recommended_branches = get_recommended_branches(recommended_courses, subject_values, branch_data, weight)
         
         return {

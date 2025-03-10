@@ -10,8 +10,6 @@ import pandas as pd
 import numpy as np
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from google.oauth2.service_account import Credentials  # หากไม่ได้ใช้ สามารถลบออกไปได้
-import gspread  # หากไม่ได้ใช้ สามารถลบออกไปได้
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -47,7 +45,7 @@ def download_file(url, filename):
         logging.error(f"Error downloading {filename}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error downloading {filename}: {str(e)}")
 
-# ✅ ฟังก์ชันโหลดข้อมูลจากไฟล์
+# ✅ ฟังก์ชันโหลดข้อมูล
 def load_data():
     try:
         for filename, url in GITHUB_FILES.items():
@@ -86,10 +84,12 @@ def load_data():
 
 # ✅ ฟังก์ชันประมวลผลข้อมูล
 def process_personality_answers(personality_answers: Dict[str, str]) -> List[int]:
-    return [int(personality_answers[key]) for key in sorted(personality_answers)]
+    processed = {int(k.replace('answers[', '').replace(']', '')): int(v) for k, v in personality_answers.items()}
+    return [processed[k] for k in sorted(processed.keys())]
 
 def process_subject_scores(scores: Dict[str, str]) -> List[float]:
-    return [float(scores[key]) for key in sorted(scores)]
+    processed = {int(k.replace('scores[', '').replace(']', '')): float(v) for k, v in scores.items()}
+    return [processed[k] for k in sorted(processed.keys())]
 
 # ✅ ฟังก์ชันแนะนำคณะ
 def get_recommended_courses(personality_values: List[int], df, score_data, label_encoder) -> List[str]:

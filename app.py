@@ -14,13 +14,24 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics.pairwise import cosine_similarity
 import base64
 from google.oauth2 import service_account
+from googleapiclient.discovery import build  # เพิ่มการ import นี้
+from googleapiclient.errors import HttpError
 
 logging.basicConfig(level=logging.DEBUG)
 
 app = FastAPI()
 
-service_account_info = json.loads(base64.b64decode(os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON']))
-
+def connect_google_sheets():
+    try:
+        service_account_info = json.loads(base64.b64decode(os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON']))
+        creds = service_account.Credentials.from_service_account_info(
+            service_account_info,
+            scopes=["https://www.googleapis.com/auth/spreadsheets"]
+        )
+        service = build("sheets", "v4", credentials=creds)
+        return service.spreadsheets()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error connecting to Google Sheets: {str(e)}")
 # ✅ อนุญาต CORS
 app.add_middleware(
     CORSMiddleware,
@@ -158,8 +169,12 @@ async def recommend(payload: Dict[str, Dict[str, str]]):
 async def save_liked_result(data: Dict):
     try:
         print("🔹 Data received:", data)  # ✅ Debug เช็คข้อมูลที่รับมา
-        sheet = connect_google_sheets()
+        sheet_service = connect_google_sheets()
 
+        # ค่า spreadsheetId ของคุณที่ได้จาก URL ของ Google Sheets
+        spreadsheet_id = "14_IsqgYU6CLCoyheoc4qW5bNWLZp2u5zhqd4g-rqxX8"  # แทนที่ด้วย spreadsheetId ของคุณ
+
+        # ข้อมูลที่ต้องการบันทึกลงใน Google Sheets
         new_data = [
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             *[v for v in data['personalityAnswers'].values()],
@@ -169,9 +184,19 @@ async def save_liked_result(data: Dict):
         ]
 
         print("✅ Data to be saved:", new_data)  # ✅ Debug เช็คข้อมูลก่อนบันทึก
-        sheet.append_row(new_data)
+
+        # ใช้ method append เพื่อนำข้อมูลใหม่ไปแทรกที่แถวสุดท้าย
+        sheet_service.values().append(
+            spreadsheetId=spreadsheet_id,
+            range="Sheet1!A1",  # ระบุ Range ที่คุณต้องการบันทึก เช่น "Sheet1!A1" 
+            valueInputOption="RAW",  # เลือกเป็น RAW ถ้าไม่ต้องการการแปลงข้อมูล
+            body={"values": [new_data]}  # ข้อมูลที่ต้องการเพิ่ม
+        ).execute()
 
         return {"success": True, "message": "Data saved to Google Sheets successfully"}
-    except Exception as e:
+    except HttpError as e:
         print("🔥 ERROR:", str(e))  # ✅ Debug เช็ค Error ที่เกิดขึ้น
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        print("🔥 ERROR:", str(e))  # ✅ Debug เช็ค Error อื่น ๆ
         raise HTTPException(status_code=500, detail=str(e))

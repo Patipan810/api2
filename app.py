@@ -191,19 +191,33 @@ async def save_liked_result(data: Dict):
         logging.info("🔹 Data received: %s", json.dumps(data, ensure_ascii=False))  # Debug ข้อมูลที่รับมา
         sheet = connect_google_sheets()
 
-        # เตรียมข้อมูลสำหรับบันทึก
+        # ✅ ตรวจสอบว่า Key ที่ต้องการมีอยู่หรือไม่
+        required_keys = ["personalityAnswers", "scores", "recommendations"]
+        for key in required_keys:
+            if key not in data:
+                raise HTTPException(status_code=400, detail=f"Missing key: {key}")
+
+        # ✅ ตรวจสอบโครงสร้างภายใน recommendations
+        if "คณะที่แนะนำตามบุคลิก" not in data["recommendations"] or "สาขาที่แนะนำตามน้ำหนักคะแนนและบุคลิก" not in data["recommendations"]:
+            raise HTTPException(status_code=400, detail="Missing keys in recommendations")
+
+        # ✅ เตรียมข้อมูลสำหรับบันทึก
         new_data = [
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),  # Timestamp
-            *[v for v in data['personalityAnswers'].values()],  # คำตอบบุคลิกภาพ
-            *[v for v in data['scores'].values()],  # คะแนนวิชา
-            *[c['name'] for c in data['recommendations']['คณะที่แนะนำตามบุคลิก']],  # คณะที่แนะนำ
-            *data['recommendations']['สาขาที่แนะนำตามน้ำหนักคะแนนและบุคลิก']  # สาขาที่แนะนำ
+            *[v for v in data["personalityAnswers"].values()],  # คำตอบบุคลิกภาพ
+            *[v for v in data["scores"].values()],  # คะแนนวิชา
+            *[c["name"] for c in data["recommendations"]["คณะที่แนะนำตามบุคลิก"]],  # คณะที่แนะนำ
+            *data["recommendations"]["สาขาที่แนะนำตามน้ำหนักคะแนนและบุคลิก"]  # สาขาที่แนะนำ
         ]
 
         logging.info("✅ Data to be saved: %s", new_data)  # Debug ข้อมูลก่อนบันทึก
         sheet.append_row(new_data)  # บันทึกลง Google Sheets
 
         return {"success": True, "message": "Data saved to Google Sheets successfully"}
+    except KeyError as e:
+        logging.error("🚨 KeyError: %s", str(e))
+        raise HTTPException(status_code=400, detail=f"Missing key in request data: {str(e)}")
     except Exception as e:
         logging.error("🔥 ERROR: %s", str(e), exc_info=True)  # Debug Error
         raise HTTPException(status_code=500, detail=str(e))
+

@@ -48,7 +48,7 @@ def connect_google_sheets():
         if not encoded_credentials:
             logging.error("🚨 Missing Google Credentials in Environment Variables!")
             raise HTTPException(status_code=500, detail="Missing Google Credentials in Environment Variables")
-
+        logging.info("🚀 GOOGLE_CREDENTIALS: %s", os.getenv("GOOGLE_CREDENTIALS"))
         # ✅ ถอดรหัส Base64 เป็น JSON
         decoded_credentials = base64.b64decode(encoded_credentials).decode("utf-8")
         credentials_info = json.loads(decoded_credentials)

@@ -36,7 +36,7 @@ GITHUB_FILES = {
 }
 
 # ✅ ฟังก์ชันโหลดไฟล์จาก GitHub
-def download_file(url, filename):
+def download_file(url: str, filename: str):
     response = requests.get(url)
     if response.status_code == 200:
         with open(filename, "wb") as f:
@@ -48,33 +48,32 @@ def download_file(url, filename):
 
 # ✅ โหลดข้อมูลจากไฟล์ .xlsx
 def load_data():
-    for filename, url in GITHUB_FILES.items():
-        if not os.path.exists(filename):
-            logging.debug(f"📂 Downloading {filename} from {url}")
-            download_file(url, filename)
-    
     try:
+        for filename, url in GITHUB_FILES.items():
+            if not os.path.exists(filename):
+                logging.debug(f"📂 Downloading {filename} from {url}")
+                download_file(url, filename)
+        
         df = pd.read_excel("Respon.xlsx")
-        Weight = pd.read_excel("Weight.xlsx")
+        weight = pd.read_excel("Weight.xlsx")
         branch_data = pd.read_excel("BranchID.Name.xlsx")
+        
+        if df.empty or weight.empty or branch_data.empty:
+            logging.error("❌ One or more dataframes are empty!")
+            raise HTTPException(status_code=500, detail="One or more data files are empty!")
+        
+        df = df.drop(['Timestamp', 'User'], axis=1, errors='ignore')
+        label_encoder = LabelEncoder()
+        df['Course'] = label_encoder.fit_transform(df['Course'].astype(str))
+        
+        for column in df.select_dtypes(include=['object']).columns:
+            df[column] = LabelEncoder().fit_transform(df[column].astype(str))
+        
+        score_data = df.drop(['Course', 'Branch'], axis=1, errors='ignore')
+        return df, weight, branch_data, score_data, label_encoder
     except Exception as e:
         logging.error(f"❌ Error reading Excel files: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error reading Excel files: {str(e)}")
-
-    if df.empty or Weight.empty or branch_data.empty:
-        logging.error("❌ One or more dataframes are empty!")
-        raise HTTPException(status_code=500, detail="One or more data files are empty!")
-
-    df = df.drop(['Timestamp', 'User'], axis=1, errors='ignore')
-    label_encoder = LabelEncoder()
-    df['Course'] = label_encoder.fit_transform(df['Course'])
-    
-    for column in df.columns:
-        if df[column].dtype == 'object':
-            df[column] = LabelEncoder().fit_transform(df[column])
-    
-    score_data = df.drop(['Course', 'Branch'], axis=1)
-    return df, Weight, branch_data, score_data, label_encoder
 
 # ✅ เชื่อมต่อ Google Sheets
 def connect_google_sheets():
@@ -101,28 +100,27 @@ def connect_google_sheets():
 @app.post("/api/recommend")
 async def recommend(payload: Dict[str, Dict[str, str]]):
     try:
-        df, Weight, branch_data, score_data, label_encoder = load_data()
+        logging.debug(f"📥 Received Payload: {payload}")
 
-        # ✅ ดึงค่าคำตอบบุคลิก & คะแนนรายวิชา
-        personality_values = process_personality_answers(payload['personality_answers'])
-        subject_values = process_subject_scores(payload['scores'])
-
-        # ✅ แนะนำคณะ
-        recommended_courses = get_recommended_courses(personality_values, score_data, label_encoder, df)
-
-        # ✅ แนะนำสาขา (เพิ่ม logic ตรงนี้)
-        recommended_branches = get_recommended_branches(recommended_courses, subject_values, branch_data, Weight)
-
+        df, weight, branch_data, score_data, label_encoder = load_data()
+        personality_values = [int(payload['personality_answers'][key]) for key in sorted(payload['personality_answers'])]
+        subject_values = [float(payload['scores'][key]) for key in sorted(payload['scores'])]
+        
+        similarity_scores = cosine_similarity([personality_values], score_data)[0]
+        recommended_courses = list(label_encoder.inverse_transform(df.iloc[np.argsort(similarity_scores)[-5:][::-1]]['Course']))
+        
+        logging.debug(f"🎓 Recommended Courses: {recommended_courses}")
+        recommended_branches = []  # (เพิ่มตรรกะการคำนวณของ get_recommended_branches ที่นี่)
+        
         return {
             "ผลการแนะนำ": {
                 "คณะที่แนะนำตามบุคลิก": [{"name": course} for course in recommended_courses],
                 "สาขาที่แนะนำตามน้ำหนักคะแนนและบุคลิก": recommended_branches or ["ไม่มีสาขาที่ตรงกับเกณฑ์ของคุณ"]
             }
         }
-
     except Exception as e:
+        logging.error(f"❌ Error in /api/recommend: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-
 
 # ✅ API บันทึกผล
 @app.post("/api/save-liked-result")

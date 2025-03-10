@@ -50,12 +50,16 @@ def load_data():
         if df.empty or weight.empty or branch_data.empty:
             raise HTTPException(status_code=500, detail="One or more data files are empty!")
         
-        df = df.drop(['Timestamp', 'User'], axis=1, errors='ignore')
+        df = df.drop(['Timestamp', 'User'], axis=1)
         label_encoder = LabelEncoder()
-        df['Course'] = label_encoder.fit_transform(df['Course'].astype(str))
-        
-        score_data = df.drop(['Course', 'Branch'], axis=1, errors='ignore')
-        return df, weight, branch_data, score_data, label_encoder
+        df['Course'] = label_encoder.fit_transform(df['Course'])
+
+        for column in df.columns:
+            if df[column].dtype == 'object':
+                df[column] = LabelEncoder().fit_transform(df[column])
+
+        score_data = df.drop(['Course', 'Branch'], axis=1)
+        return df, Weight, branch_data, score_data, label_encoder
     except Exception as e:
         logging.error(f"Error reading Excel files: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error reading Excel files: {str(e)}")

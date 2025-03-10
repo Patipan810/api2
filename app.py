@@ -41,6 +41,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 # ✅ ตั้งค่า URL ไฟล์จาก GitHub (ต้องแทนที่ USERNAME, REPO, BRANCH ด้วยค่าที่ถูกต้อง)
 GITHUB_FILES = {
     "Respon.xlsx": "https://raw.githubusercontent.com/Patipan810/api2/main/Respon.xlsx",
@@ -200,3 +201,8 @@ async def save_liked_result(data: Dict):
     except Exception as e:
         print("🔥 ERROR:", str(e))  # ✅ Debug เช็ค Error อื่น ๆ
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/")
+async def root():
+    return {"message": "Hello, World!"}

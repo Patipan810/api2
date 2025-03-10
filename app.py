@@ -8,10 +8,13 @@ from typing import Dict, List
 
 import pandas as pd
 import numpy as np
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics.pairwise import cosine_similarity
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+from fastapi import HTTPException
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -32,6 +35,39 @@ GITHUB_FILES = {
     "Weight.xlsx": "https://raw.githubusercontent.com/Patipan810/api2/main/Weight.xlsx",
     "BranchID.Name.xlsx": "https://raw.githubusercontent.com/Patipan810/api2/main/BranchID.Name.xlsx"
 }
+
+# ✅ ตั้งค่าชื่อ Google Sheet ของคุณ
+GOOGLE_SHEET_NAME = "Data_project_like_course_branch"
+
+def connect_google_sheets():
+    try:
+        logging.info("📌 Connecting to Google Sheets...")
+
+        # ✅ อ่านค่า Base64 จาก Environment Variable
+        encoded_credentials = os.getenv("GOOGLE_CREDENTIALS")
+        if not encoded_credentials:
+            logging.error("🚨 Missing Google Credentials in Environment Variables!")
+            raise HTTPException(status_code=500, detail="Missing Google Credentials in Environment Variables")
+
+        # ✅ ถอดรหัส Base64 เป็น JSON
+        decoded_credentials = base64.b64decode(encoded_credentials).decode("utf-8")
+        credentials_info = json.loads(decoded_credentials)
+
+        # ✅ ใช้ JSON ที่ได้มาเพื่อเชื่อมต่อ Google Sheets
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(credentials_info, scope)
+        client = gspread.authorize(creds)
+
+        # ✅ เปิด Google Sheet
+        sheet = client.open(GOOGLE_SHEET_NAME).sheet1
+        logging.info("✅ Google Sheets connected successfully!")
+        return sheet
+    except json.JSONDecodeError as json_error:
+        logging.error(f"🚨 JSON Decode Error: {json_error}")
+        raise HTTPException(status_code=500, detail=f"Invalid Google Credentials format: {str(json_error)}")
+    except Exception as e:
+        logging.error(f"🚨 Google Sheets connection error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Google Sheets connection error: {str(e)}")
 
 # ✅ ฟังก์ชันดาวน์โหลดไฟล์
 def download_file(url, filename):
@@ -147,4 +183,27 @@ async def recommend(payload: Dict[str, Dict[str, str]]):
         }
     except Exception as e:
         logging.error(f"Error in /api/recommend: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/save-liked-result")
+async def save_liked_result(data: Dict):
+    try:
+        logging.info("🔹 Data received: %s", json.dumps(data, ensure_ascii=False))  # Debug ข้อมูลที่รับมา
+        sheet = connect_google_sheets()
+
+        # เตรียมข้อมูลสำหรับบันทึก
+        new_data = [
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),  # Timestamp
+            *[v for v in data['personalityAnswers'].values()],  # คำตอบบุคลิกภาพ
+            *[v for v in data['scores'].values()],  # คะแนนวิชา
+            *[c['name'] for c in data['recommendations']['คณะที่แนะนำตามบุคลิก']],  # คณะที่แนะนำ
+            *data['recommendations']['สาขาที่แนะนำตามน้ำหนักคะแนนและบุคลิก']  # สาขาที่แนะนำ
+        ]
+
+        logging.info("✅ Data to be saved: %s", new_data)  # Debug ข้อมูลก่อนบันทึก
+        sheet.append_row(new_data)  # บันทึกลง Google Sheets
+
+        return {"success": True, "message": "Data saved to Google Sheets successfully"}
+    except Exception as e:
+        logging.error("🔥 ERROR: %s", str(e), exc_info=True)  # Debug Error
         raise HTTPException(status_code=500, detail=str(e))

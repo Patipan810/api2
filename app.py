@@ -4,6 +4,7 @@ import json
 import logging
 import requests
 from datetime import datetime
+from pytz import timezone
 from typing import Dict, List
 
 import pandas as pd
@@ -19,6 +20,7 @@ from fastapi import HTTPException
 logging.basicConfig(level=logging.DEBUG)
 
 app = FastAPI()
+thai_tz = timezone("Asia/Bangkok")
 
 # ✅ อนุญาต CORS
 app.add_middleware(
@@ -188,36 +190,30 @@ async def recommend(payload: Dict[str, Dict[str, str]]):
 @app.post("/api/save-liked-result")
 async def save_liked_result(data: Dict):
     try:
-        logging.info("🔹 Data received: %s", json.dumps(data, ensure_ascii=False))  # Debug ข้อมูลที่รับมา
-        
-        # ✅ ตรวจสอบว่าเชื่อมต่อ Google Sheets สำเร็จหรือไม่
+        logging.info("🔹 Data received: %s", json.dumps(data, ensure_ascii=False))
+
         sheet = connect_google_sheets()
         if not sheet:
             raise HTTPException(status_code=500, detail="Google Sheets connection failed")
-        logging.info("✅ Google Sheets connected: %s", sheet.title)  
 
-        # ✅ ตรวจสอบว่า Key ที่ต้องการมีอยู่หรือไม่
         required_keys = ["personalityAnswers", "scores", "recommendations"]
         for key in required_keys:
             if key not in data:
                 raise HTTPException(status_code=400, detail=f"Missing key: {key}")
 
-        # ✅ ตรวจสอบโครงสร้างภายใน recommendations
         if "คณะที่แนะนำตามบุคลิก" not in data["recommendations"] or "สาขาที่แนะนำตามน้ำหนักคะแนนและบุคลิก" not in data["recommendations"]:
             raise HTTPException(status_code=400, detail="Missing keys in recommendations")
 
-        # ✅ เตรียมข้อมูลสำหรับบันทึก
         new_data = [
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),  # Timestamp
-            *[str(v) for v in data["personalityAnswers"].values()],  # คำตอบบุคลิกภาพ
-            *[str(v) for v in data["scores"].values()],  # คะแนนวิชา
-            *[c["name"] for c in data["recommendations"]["คณะที่แนะนำตามบุคลิก"]],  # คณะที่แนะนำ
-            *data["recommendations"]["สาขาที่แนะนำตามน้ำหนักคะแนนและบุคลิก"]  # สาขาที่แนะนำ
+            datetime.now(thai_tz).strftime("%Y-%m-%d %H:%M:%S"),  # ✅ เวลาไทย (GMT+7)
+            *[str(v) for v in data["personalityAnswers"].values()],
+            *[str(v) for v in data["scores"].values()],
+            *[c["name"] for c in data["recommendations"]["คณะที่แนะนำตามบุคลิก"]],
+            *data["recommendations"]["สาขาที่แนะนำตามน้ำหนักคะแนนและบุคลิก"]
         ]
 
-        logging.info("✅ Data structure: %s", json.dumps(new_data, ensure_ascii=False))  # Debug ข้อมูลก่อนบันทึก
+        logging.info("✅ Data structure: %s", json.dumps(new_data, ensure_ascii=False))
 
-        # ✅ ลองบันทึกข้อมูลลง Google Sheets
         try:
             sheet.append_row(new_data)
             logging.info("✅ Data appended successfully!")
@@ -231,5 +227,5 @@ async def save_liked_result(data: Dict):
         logging.error("🚨 KeyError: %s", str(e))
         raise HTTPException(status_code=400, detail=f"Missing key in request data: {str(e)}")
     except Exception as e:
-        logging.error("🔥 ERROR: %s", str(e), exc_info=True)  # Debug Error
+        logging.error("🔥 ERROR: %s", str(e), exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

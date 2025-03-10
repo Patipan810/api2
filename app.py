@@ -189,7 +189,12 @@ async def recommend(payload: Dict[str, Dict[str, str]]):
 async def save_liked_result(data: Dict):
     try:
         logging.info("🔹 Data received: %s", json.dumps(data, ensure_ascii=False))  # Debug ข้อมูลที่รับมา
+        
+        # ✅ ตรวจสอบว่าเชื่อมต่อ Google Sheets สำเร็จหรือไม่
         sheet = connect_google_sheets()
+        if not sheet:
+            raise HTTPException(status_code=500, detail="Google Sheets connection failed")
+        logging.info("✅ Google Sheets connected: %s", sheet.title)  
 
         # ✅ ตรวจสอบว่า Key ที่ต้องการมีอยู่หรือไม่
         required_keys = ["personalityAnswers", "scores", "recommendations"]
@@ -204,20 +209,27 @@ async def save_liked_result(data: Dict):
         # ✅ เตรียมข้อมูลสำหรับบันทึก
         new_data = [
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),  # Timestamp
-            *[v for v in data["personalityAnswers"].values()],  # คำตอบบุคลิกภาพ
-            *[v for v in data["scores"].values()],  # คะแนนวิชา
+            *[str(v) for v in data["personalityAnswers"].values()],  # คำตอบบุคลิกภาพ
+            *[str(v) for v in data["scores"].values()],  # คะแนนวิชา
             *[c["name"] for c in data["recommendations"]["คณะที่แนะนำตามบุคลิก"]],  # คณะที่แนะนำ
             *data["recommendations"]["สาขาที่แนะนำตามน้ำหนักคะแนนและบุคลิก"]  # สาขาที่แนะนำ
         ]
 
-        logging.info("✅ Data to be saved: %s", new_data)  # Debug ข้อมูลก่อนบันทึก
-        sheet.append_row(new_data)  # บันทึกลง Google Sheets
+        logging.info("✅ Data structure: %s", json.dumps(new_data, ensure_ascii=False))  # Debug ข้อมูลก่อนบันทึก
+
+        # ✅ ลองบันทึกข้อมูลลง Google Sheets
+        try:
+            sheet.append_row(new_data)
+            logging.info("✅ Data appended successfully!")
+        except Exception as e:
+            logging.error("🔥 Failed to append row: %s", str(e))
+            raise HTTPException(status_code=500, detail=f"Failed to save data: {str(e)}")
 
         return {"success": True, "message": "Data saved to Google Sheets successfully"}
+
     except KeyError as e:
         logging.error("🚨 KeyError: %s", str(e))
         raise HTTPException(status_code=400, detail=f"Missing key in request data: {str(e)}")
     except Exception as e:
         logging.error("🔥 ERROR: %s", str(e), exc_info=True)  # Debug Error
         raise HTTPException(status_code=500, detail=str(e))
-

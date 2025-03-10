@@ -50,11 +50,21 @@ def load_data():
         if df.empty or weight.empty or branch_data.empty:
             raise HTTPException(status_code=500, detail="One or more data files are empty!")
         
+        # 2. ลบคอลัมน์ที่ไม่ต้องการออก
         df = df.drop(['Timestamp', 'User'], axis=1, errors='ignore')
+
+        # 3. แปลงคอลัมน์ 'Course' ให้เป็นตัวเลขโดยใช้ LabelEncoder
         label_encoder = LabelEncoder()
         df['Course'] = label_encoder.fit_transform(df['Course'].astype(str))
-        
+
+        # ตรวจสอบว่าคอลัมน์ใดที่ไม่ใช่ตัวเลข และแปลงด้วย LabelEncoder
+        for column in df.columns:
+            if df[column].dtype == 'object':
+                df[column] = LabelEncoder().fit_transform(df[column])
+
+        # 4. สร้าง DataFrame สำหรับคะแนนทั้งหมด
         score_data = df.drop(['Course', 'Branch'], axis=1, errors='ignore')
+        
         return df, weight, branch_data, score_data, label_encoder
     except Exception as e:
         logging.error(f"Error reading Excel files: {str(e)}", exc_info=True)

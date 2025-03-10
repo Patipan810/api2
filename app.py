@@ -62,49 +62,45 @@ def load_data():
 
 # ✅ ฟังก์ชันประมวลผลข้อมูล
 
-def process_personality_answers(personality_answers: Dict[str, str]) -> List[int]:
-    return [int(personality_answers[key]) for key in sorted(personality_answers)]
+def process_personality_answers(personality_answers: Dict[str, str]) -> list:
+    processed = {int(k.replace('answers[', '').replace(']', '')): int(v) for k, v in personality_answers.items()}
+    return [processed[k] for k in sorted(processed.keys())]
 
-def process_subject_scores(scores: Dict[str, str]) -> List[float]:
-    return [float(scores[key]) for key in sorted(scores)]
+def process_subject_scores(scores: Dict[str, str]) -> list:
+    processed = {int(k.replace('scores[', '').replace(']', '')): float(v) for k, v in scores.items()}
+    return [processed[k] for k in sorted(processed.keys())]
 
-# ✅ ฟังก์ชันแนะนำคณะ
+def get_recommended_courses(personality_values: list, score_data, label_encoder, df) -> List[str]:
+    course_similarity = cosine_similarity([personality_values], score_data)[0]
+    top_courses_indices = np.argsort(course_similarity)[-5:][::-1]
+    return list(label_encoder.inverse_transform(df.iloc[top_courses_indices]['Course']))
 
-def get_recommended_courses(personality_values: List[int], df, score_data, label_encoder) -> List[str]:
-    similarity_scores = cosine_similarity([personality_values], score_data)[0]
-    top_courses = np.argsort(similarity_scores)[-5:][::-1]
-    return list(label_encoder.inverse_transform(df.iloc[top_courses]['Course']))
+def get_recommended_branches(courses: List[str], subject_scores: list, branch_data, Weight) -> List[str]:
+    recommended_branches = []
+    all_branch_ids = branch_data[branch_data['Course'].isin(courses)]['BranchID'].values
+    relevant_weights = Weight[Weight['BranchID'].isin(all_branch_ids)]
 
-# ✅ ฟังก์ชันแนะนำสาขา
-
-def get_recommended_branches(courses: List[str], subject_scores: List[float], branch_data, weight) -> List[str]:
-    relevant_branches = branch_data[branch_data['Course'].isin(courses)]
-    if relevant_branches.empty:
+    if relevant_weights.empty:
         return []
-    
-    relevant_weights = weight[weight['BranchID'].isin(relevant_branches['BranchID'].values)]
+
     user_scores_array = np.array(subject_scores).reshape(1, -1)
     filtered_weight = relevant_weights.drop(columns=['BranchID']).fillna(0)
-    
-    min_cols = min(user_scores_array.shape[1], filtered_weight.shape[1])
-    user_scores_array = user_scores_array[:, :min_cols]
-    filtered_weight = filtered_weight.iloc[:, :min_cols]
-    
     cosine_similarities = cosine_similarity(user_scores_array, filtered_weight)[0]
+
     results = pd.DataFrame({
         'BranchID': relevant_weights['BranchID'].values,
         'Similarity': cosine_similarities
     })
-    
+
     top_branches = results[results['Similarity'] > 0].nlargest(10, 'Similarity')
-    recommended_branches = []
+
     for _, row in top_branches.iterrows():
         branch_info = branch_data.loc[branch_data['BranchID'] == row['BranchID']]
         if not branch_info.empty:
             branch_name = branch_info['Branch'].values[0]
             similarity = float(row['Similarity'] * 100)
             recommended_branches.append(f"{branch_name} (ค่า Similarity: {similarity:.2f}%)")
-    
+
     return recommended_branches
 
 # ✅ API แนะนำ

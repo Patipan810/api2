@@ -202,7 +202,3 @@ async def save_liked_result(data: Dict):
         print("🔥 ERROR:", str(e))  # ✅ Debug เช็ค Error อื่น ๆ
         raise HTTPException(status_code=500, detail=str(e))
 
-
-@app.get("/")
-async def root():
-    return {"message": "Hello, World!"}

@@ -41,6 +41,7 @@ GITHUB_FILES = {
 # ✅ ตั้งค่าชื่อ Google Sheet ของคุณ
 GOOGLE_SHEET_NAME = "Data_project_like_course_branch"
 
+# เชื่อมค่อกับgoogle sheetโดยแปลง เป็น base 64
 def connect_google_sheets():
     try:
         logging.info("📌 Connecting to Google Sheets...")

@@ -22,7 +22,7 @@ logging.basicConfig(level=logging.DEBUG)
 app = FastAPI()
 thai_tz = timezone("Asia/Bangkok")
 
-# ✅ อนุญาต CORS
+# อนุญาต CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://itbit0267.cpkkuhost.com"],
@@ -31,37 +31,35 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ✅ ตั้งค่า URL ไฟล์จาก GitHub (ต้องแทนที่ USERNAME, REPO, BRANCH ด้วยค่าที่ถูกต้อง)
+# ตั้งค่า URL ไฟล์จาก GitHub (ต้องแทนที่ USERNAME, REPO, BRANCH ด้วยค่าที่ถูกต้อง)
 GITHUB_FILES = {
     "Respon.xlsx": "https://raw.githubusercontent.com/Patipan810/api2/main/Respon.xlsx",
     "Weight.xlsx": "https://raw.githubusercontent.com/Patipan810/api2/main/Weight.xlsx",
     "BranchID.Name.xlsx": "https://raw.githubusercontent.com/Patipan810/api2/main/BranchID.Name.xlsx"
 }
 
-# ✅ ตั้งค่าชื่อ Google Sheet ของคุณ
+# ตั้งค่าชื่อ Google Sheet ของคุณ
 GOOGLE_SHEET_NAME = "Data_project_like_course_branch"
 
 # เชื่อมค่อกับgoogle sheetโดยแปลง เป็น base 64
 def connect_google_sheets():
     try:
-        logging.info("📌 Connecting to Google Sheets...")
-
-        # ✅ อ่านค่า Base64 จาก Environment Variable
+        # อ่านค่า Base64 จาก Environment Variable
         encoded_credentials = os.getenv("GOOGLE_CREDENTIALS")
         if not encoded_credentials:
             logging.error("🚨 Missing Google Credentials in Environment Variables!")
             raise HTTPException(status_code=500, detail="Missing Google Credentials in Environment Variables")
         logging.info("🚀 GOOGLE_CREDENTIALS: %s", os.getenv("GOOGLE_CREDENTIALS"))
-        # ✅ ถอดรหัส Base64 เป็น JSON
+        # ถอดรหัส Base64 เป็น JSON
         decoded_credentials = base64.b64decode(encoded_credentials).decode("utf-8")
         credentials_info = json.loads(decoded_credentials)
 
-        # ✅ ใช้ JSON ที่ได้มาเพื่อเชื่อมต่อ Google Sheets
+        # ใช้ JSON ที่ได้มาเพื่อเชื่อมต่อ Google Sheets
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = ServiceAccountCredentials.from_json_keyfile_dict(credentials_info, scope)
         client = gspread.authorize(creds)
 
-        # ✅ เปิด Google Sheet
+        # เปิด Google Sheet
         sheet = client.open(GOOGLE_SHEET_NAME).sheet1
         logging.info("✅ Google Sheets connected successfully!")
         return sheet
@@ -72,7 +70,7 @@ def connect_google_sheets():
         logging.error(f"🚨 Google Sheets connection error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Google Sheets connection error: {str(e)}")
 
-# ✅ ฟังก์ชันดาวน์โหลดไฟล์
+# ฟังก์ชันดาวน์โหลดไฟล์
 def download_file(url, filename):
     try:
         response = requests.get(url)
@@ -84,7 +82,7 @@ def download_file(url, filename):
         logging.error(f"Error downloading {filename}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error downloading {filename}: {str(e)}")
 
-# ✅ ฟังก์ชันโหลดข้อมูล
+# ฟังก์ชันโหลดข้อมูล
 def load_data():
     try:
         for filename, url in GITHUB_FILES.items():

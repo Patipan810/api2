@@ -131,8 +131,9 @@ def process_subject_scores(scores: Dict[str, str]) -> List[float]:
 # ✅ ฟังก์ชันแนะนำคณะ
 def get_recommended_courses(personality_values: List[int], df, score_data, label_encoder) -> List[str]:
     similarity_scores = cosine_similarity([personality_values], score_data)[0]
-    top_courses = np.argsort(similarity_scores)[-5:][::-1]
-    return list(label_encoder.inverse_transform(df.iloc[top_courses]['Course']))
+    top_courses = np.argsort(similarity_scores)[-10:][::-1]  # เลือก 10 อันดับแรกก่อน
+    unique_courses = list(set(label_encoder.inverse_transform(df.iloc[top_courses]['Course'])))[:5]  # ลบซ้ำและเลือก 5 อันดับแรก
+    return unique_courses
 
 # ✅ ฟังก์ชันแนะนำสาขา
 def get_recommended_branches(courses: List[str], subject_scores: List[float], branch_data, weight) -> List[str]:
